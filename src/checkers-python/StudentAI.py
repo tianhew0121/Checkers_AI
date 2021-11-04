@@ -75,5 +75,6 @@ class StudentAI():
                 if v2 < v:
                     v, mv = v2, mv2
                 self.board.undo()
+        # return
         return v, mv
 
