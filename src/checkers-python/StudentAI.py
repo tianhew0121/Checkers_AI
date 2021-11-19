@@ -1,9 +1,14 @@
 from random import randint
 from BoardClasses import Move
 from BoardClasses import Board
+import copy
 import config
+from math import sqrt
 #The following part should be completed by students.
 #Students can modify anything except the class name and exisiting functions and varibles.
+class TestException(Exception):
+    pass
+
 class StudentAI():
 
     def __init__(self,col,row,p):
@@ -15,6 +20,7 @@ class StudentAI():
         self.color = ''
         self.opponent = {1:2,2:1}
         self.color = 2
+
     def get_move(self, move):
         if len(move) != 0:
             self.board.make_move(move, self.opponent[self.color])
@@ -22,70 +28,130 @@ class StudentAI():
             self.color = 1
         ##############################################################
         #Calls the new minimax
-        move = self.minimax_search()
+        move = MTCS(copy.deepcopy(self.board), self.color).final_decision
         ##############################################################
         self.board.make_move(move, self.color)
         return move
 
-    def minimax_search(self):
-        ##############################################################
-        #Recursion depth set in config.py
-        ##############################################################
-        _, move = self.max_val(config.depth)
-        return move
+def format_all_move(move_matrix):
+    move_lst= []
+    for i in range(len(move_matrix)):
+        for j in range(len(move_matrix[i])):
+            move_lst.append(move_matrix[i][j])        
+    return move_lst
 
-    def max_val(self,depth, mv=None):
-        ##############################################################
-        # To Do:
-        #       Add the game ending condition in sudo code in lecture slides
-        #       Do the same for min_val()
-        ##############################################################
-        v = float('-inf')
-        all_moves = self.board.get_all_possible_moves(self.color)
-        if len(all_moves) == 0: # When there's no checkers that can be moved, consider a loss.
-            return float('inf'), None
+def pick_random_move(moves):
+    rand_ind = randint(0, len(moves) - 1)
+    return moves[rand_ind]
 
-        if depth <= 0: # When Reached terminal depth, evaluate the current board
-            return self.evaluate_board(self.color,self.opponent[self.color], mv)
-            
+class Node(object):
+    # This class specify node object. Can do backtrack.
+    def __init__(self, color):
+        self.parent = None
+        self.children = []
+        self.time_visit = 0
+        self.color = color
+        self.sp = 0
+        self.wi = 0
+        self.si = 0
+        self.move = 0
 
-        for r in range(len(all_moves)):
-            for c in range(len(all_moves[r])):
-                mv = all_moves[r][c]
-                self.board.make_move(mv, self.color)
-                v2, mv2 = self.min_val(depth-1,mv)
-                if v2 > v:
-                    v, mv = v2, mv2
-                self.board.undo() #undo the move made earlier
+    def selection(self):
+        selected_node = sorted(self.children, lambda x: x.wi/x.si + config.c * sqrt(self.sp/self.si))[-1]
+        return selected_node
 
-        return v, mv
-    
-    def min_val(self,depth, mv):
-        v = float('-inf')
+    def expansion(self, moves, color):
+        for move in moves:
+            new_node = Node(color)
+            new_node.store_move(move)
+            self.insert(new_node)
 
-        all_moves = self.board.get_all_possible_moves(self.opponent[self.color])
+    def insert(self, node):
+        self.children.append(node)
+        node.parent = self
 
-        if len(all_moves) == 0:
-            return float('-inf'), None
-        if depth <= 0: # evaluate the board
-            return self.evaluate_board(self.opponent[self.color],self.color, mv)
-            
-        for r in range(len(all_moves)):
-            for c in range(len(all_moves[r])):
-                mv = all_moves[r][c]
-                self.board.make_move(mv, self.opponent[self.color])
-                v2, mv2 = self.max_val(depth-1, mv)
-                if v2 < v:
-                    v, mv = v2, mv2
-                self.board.undo() # undo the move made earlier
-        return v, mv
 
-    def evaluate_board(self, my_color, oppo_color, mv): # return v, move
-        ############################################################################################################################
-        # Current v:
-        #       Set to the difference between player1(my)'s piece count and player2(opponent)'s piece count
-        #       In min_val, the player1(my) is the opponent of our agent
-        # To Do:
-        #       Optimize the this function so that every piece get to move rather than having one piece solo the game
-        ############################################################################################################################
-        return len(self.board.get_all_possible_moves(my_color)) - len(self.board.get_all_possible_moves(oppo_color)), mv
+    def visit(self, val):
+        self.si += 1
+        if self.parent:
+            self.sp = self.parent.si
+        self.wi += val[self.color]
+
+
+    def update(self, val):
+        #color is the player who wins: 1/0
+        if self.parent != None:
+            self.parent.update(val)
+        self.visit(val)
+
+
+    def set_root(self):
+        self.parent = None
+        return self
+
+    def store_move(self, move):
+        self.move = move
+
+    def is_root(self):
+        return self.parent == None
+
+
+    def is_leaf(self):
+        return self.children == set()
+
+
+class MTCS():
+
+    def __init__(self, board, color):
+        self.opponent = {1:2,2:1}
+        self.root = Node(self.opponent[color])
+        self.board = board
+        self.color = color
+        self.final_decision = 0
+        self.run()
+
+    def start_game(self):
+        moves = format_all_move(self.board.get_all_possible_moves())
+        self.root.expansion(moves)
+        for node in self.root.children:
+            if not node.is_leaf():
+                node = node.selection()
+
+
+            self.board.make_move(node.move)
+            result = self.simulation()
+            if result == 1:
+                val = {self.color:1, self.opponent[self.color]:-1}
+            elif result == -1:
+                val = {self.color:-1, self.opponent[self.color]:1}
+            else:
+                val = {self.color:0, self.opponent[self.color]:0}
+            node.update(val)
+
+    def simulation(self):
+        board = copy.deepcopy(self.board)
+        color = self.color
+        win = 0
+        while win == 0:
+            win = board.is_win(self.color)
+            # play the game randomly to the end and record stats
+            next_move = pick_random_move(format_all_move(board.get_all_possible_moves()))
+            board.make_move(next_move, color)
+            color = self.opponent[color]
+        
+        if win == self.color:
+            return 1
+        elif win == 0:
+            return 0
+        return -1
+
+    def simulate(self,parent, color):
+        # update the tree
+        new_node = Node(color)
+        parent.insert(new_node)
+        return new_node
+                
+    def check_status_win(self, color):
+        if self.board.is_win(color):
+            return True
+
