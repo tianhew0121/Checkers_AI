@@ -1,14 +1,64 @@
-from random import randint
+from ast import copy_location
+from random import choice, randint
 from BoardClasses import Move
 from BoardClasses import Board
 import copy
 import config
-from math import sqrt
+from math import sqrt, log
+from collections import defaultdict
 #The following part should be completed by students.
 #Students can modify anything except the class name and exisiting functions and varibles.
-class TestException(Exception):
-    pass
+class Board(Board):
+    def is_win(self,turn):
+        """
+        this function tracks if any player has won
+        @param :
+        @param :
+        @return :
+        @raise :
+        """
+        if turn == "W":
+            turn = 2
+        elif turn == "B":
+            turn =  1
+        W_has_move = True
+        B_has_move = True
+        if len(self.get_all_possible_moves(1)) == 0:
+            if turn != 1:
+                B_has_move = False
+        elif len(self.get_all_possible_moves(2)) == 0:
+            if turn != 2:
+                W_has_move = False
 
+        if W_has_move and not B_has_move:
+            return 2
+        elif not W_has_move and B_has_move:
+            return 1
+
+        W = True
+        B = True
+
+        for row in range(self.row):
+            for col in range(self.col):
+                checker = self.board[row][col]
+                if checker.color == 'W':
+                    W = False
+                elif checker.color == 'B':
+                    B = False
+                if not W and not B:
+                    return 0
+        if W:
+            return 2
+        elif B:
+            return 1
+        else:
+            return 0
+
+
+DEBUG = config.debug
+opponent = {2:1, 1:2}
+mcts = None
+round_counter = 0
 class StudentAI():
 
     def __init__(self,col,row,p):
@@ -20,138 +70,273 @@ class StudentAI():
         self.color = ''
         self.opponent = {1:2,2:1}
         self.color = 2
+        
+        
 
     def get_move(self, move):
+        global mcts, round_counter
+        #round_counter += 1
+        #print('In get move')
         if len(move) != 0:
             self.board.make_move(move, self.opponent[self.color])
         else:
             self.color = 1
+        #print(mcts != None)
+        #if round_counter == config.reset_counter:
+            #tree_reset()
+        '''if mcts != None :
+            #print(mcts.root.is_leaf())
+            if not mcts.root.is_leaf():
+                #print(self.board.saved_move)
+                mcts.reuse_tree(self.board.saved_move[-1][0])'''
         ##############################################################
-        #Calls the new minimax
-        move = MTCS(copy.deepcopy(self.board), self.color).final_decision
+        '''if mcts == None:
+            mcts = MCTS(self.board, self.color)'''
+        mcts = MCTS(self.board, self.color)
+        move = mcts.search()
+        '''mcts.reuse_tree(move)'''
         ##############################################################
         self.board.make_move(move, self.color)
+        #tree_reset()
+        #print(self.board.is_win(self.color))
         return move
 
-def format_all_move(move_matrix):
+def all_moves(board, color):
+    move_matrix = board.get_all_possible_moves(color)
     move_lst= []
     for i in range(len(move_matrix)):
         for j in range(len(move_matrix[i])):
             move_lst.append(move_matrix[i][j])        
     return move_lst
 
-def pick_random_move(moves):
+def my_piece(board, color):
+    move_matrix = board.get_all_possible_moves(color)
+    piece = []
+    for i in range(len(move_matrix)):
+        piece.append(move_matrix[i][0][0])
+    return piece
+
+def pick_random_move_from(moves):
+    if len(moves) == 1:
+        return moves[0]
     rand_ind = randint(0, len(moves) - 1)
     return moves[rand_ind]
 
+def reverse_board(board, i):
+    for k in range(i+1):
+        board.undo()
+
+
 class Node(object):
-    # This class specify node object. Can do backtrack.
-    def __init__(self, color):
-        self.parent = None
-        self.children = []
-        self.time_visit = 0
-        self.color = color
-        self.sp = 0
+    def __init__(self, parent, p_first=1.0) -> None:
+        self.parent = parent
+        self.p_move_first = p_first
+        self.children = {} # key: move value: node  ---> node[move] = child
+        self.si = 1 # number of time this node is visited
         self.wi = 0
-        self.si = 0
-        self.move = 0
+        self.uct = 0
+        
+
+
+    def Node_UCT(self, final=False):
+        if not self.parent:
+            sp = self.si
+        else:
+            sp = self.parent.si
+        si = self.si
+        if self.si == 0:
+            si = 1
+        #p_first = self.p_move_first / sum([c.p_move_first for c in self.parent.children.values()])
+        
+        return self.wi + config.c*sqrt(log(sp)/(si)) * (len(self.parent.children))
+
+    def update(self, val) -> None:
+        self.si += 1 # visit once and also avoid division zero
+        #print('updated, si:', self.si, 'sp:',self.sp)
+        self.wi -= val
+        
+        #self.uct = self.Node_UCT()
+
+    def update_AMAF(self, val, moves):
+        #moves = [str(i) for i in moves]
+        #p_scal = {-1: 2-config.p_scaler, 1: config.p_scaler}
+        #p_scal = {-1: 1, 1: mcts.p_scal}
+        #p_scal = {-1: 1/config.p_scaler, 1: mcts.p_scal, 0:1}
+        #if val != 0 and self.parent:
+        #    for mvs in self.children.keys():
+        #        if str(mvs) in moves:
+        #            self.children[mvs].p_move_first *= mcts.p_scal
+                    #print('AMAF')
+                    #self.children[mvs].p_move_first *= p_scal[val]
+        self.update(val)
+
+    def update_recurse(self, val, moves):
+        #print('now is update recurse, val is:', val)
+        #print('val in update recurse', val)
+        if self.parent:
+            #print('this node has parent')
+            self.parent.update_recurse(-val, moves)
+        #print('reached parent, am i root?\n', self == mcts.root, '\nmy children are\n', self.children.keys(), '\n')
+        #self.update(val)
+        self.update_AMAF(val, moves)
 
     def selection(self):
-        selected_node = sorted(self.children, lambda x: x.wi/x.si + config.c * sqrt(self.sp/self.si))[-1]
-        return selected_node
-
-    def expansion(self, moves, color):
-        for move in moves:
-            new_node = Node(color)
-            new_node.store_move(move)
-            self.insert(new_node)
-
-    def insert(self, node):
-        self.children.append(node)
-        node.parent = self
-
-
-    def visit(self, val):
-        self.si += 1
-        if self.parent:
-            self.sp = self.parent.si
-        self.wi += val[self.color]
-
-
-    def update(self, val):
-        #color is the player who wins: 1/0
-        if self.parent != None:
-            self.parent.update(val)
-        self.visit(val)
-
-
-    def set_root(self):
-        self.parent = None
+        #print("In selection")
+        #print(self.children)
+        for mv in self.children:
+            #print("in for selection", mv)
+            if self.children[mv].si == 0 :
+                #print('returning:', mv, self.children[mv])
+                return mv, self.children[mv] # if child's node has time visited == 0, select that node
+        #node_selected = sorted(self.children.items(), key=lambda mv: UCT(self.children[mv[0]]))[-1]
+        node_selected = max(self.children.items(), key=lambda mv: mv[1].Node_UCT())
+        #print('node select', node_selected[1].UCT)
+        #print("after getting node_selected")
+        return node_selected # returns the node with largest UCT value
+    
+    def selection_recurse(self):
+        if not self.is_leaf:
+            return self.selection().selection_recurse() # return the selected
         return self
 
-    def store_move(self, move):
-        self.move = move
-
-    def is_root(self):
-        return self.parent == None
-
+    def expansion(self, moves):
+        for move in moves:
+            self.children[move] = Node(self, 1.0/len(moves))
 
     def is_leaf(self):
-        return self.children == set()
+        return len(self.children) == 0
 
+'''def stupid_filter(board, my_color, current_color):
+    if my_color == current_color:
+        all_move = all_moves(board, current_color)
+        for move in all_move:
+            board.make_move(move, current_color):
+            opponent_color == opponent[current_color]
+            win_type = board.is_win(current_color)
+            if win_type == my_color:'''
 
-class MTCS():
-
-    def __init__(self, board, color):
-        self.opponent = {1:2,2:1}
-        self.root = Node(self.opponent[color])
+class MCTS():
+    def __init__(self, board, color) -> None:
+        self.root = Node(None)
         self.board = board
-        self.color = color
-        self.final_decision = 0
-        self.run()
+        self.my_color = color
+        self.p_scal = config.p_scaler
+        self.sim_count = config.sim_count
+        self.shrink_factor = config.sim_scaler
+        self.simulation_lim = config.simulation_limit
 
-    def start_game(self):
-        moves = format_all_move(self.board.get_all_possible_moves())
-        self.root.expansion(moves)
-        for node in self.root.children:
-            if not node.is_leaf():
-                node = node.selection()
+    def reset(self):
+        self.root = Node(None)
+
+    def search(self):
+        all_move = all_moves(self.board, self.my_color)
+        if len(all_move) == 1:
+            return all_move[0]
+        for i in range(self.sim_count):
+            #do one simulation and expand the nodes
+            board = copy.deepcopy(self.board)
+            current_color = self.my_color
+            current_node = self.root
+            #print('im not leaf')
+            while not current_node.is_leaf():
+                #print('im not leaf for')
+                current_move, current_node = current_node.selection()
+                board.make_move(current_move, current_color)
+                current_color = opponent[current_color]
+            #print('im not leaf')
+            # current node is leaf
+            all_move = all_moves(board, color=current_color)
+            game_finished = board.is_win(current_color)
+            if game_finished == 0  :
+                if len(all_move) != 0:
+                    #print('expanding')
+                    current_node.expansion(all_move)
+                    #current_color = opponent[current_color]
+            # simulation step
+            if game_finished == self.my_color  :
+                current_node.update_recurse(-1.1, [])
+            elif game_finished == opponent[self.my_color]  :
+                current_node.update_recurse(-1, [])
+            simulation_result, moves_to_end = self.simulation(board, current_color)
+            # simulation result: 1 if winner is current_color, -1 if opponent
+            if DEBUG:
+                print(simulation_result, 'player:', current_color, 'mycolor:', self.my_color)
+            if simulation_result != 0:
+                current_node.update_recurse(simulation_result, moves_to_end)
+
+        #self.size_reduce()
+        choices = sorted(self.root.children.keys(), key= lambda x: self.root.children[x].si)
+        #for choice in choices:
+            #if self.root.children[choice].si > 0.3 * config.sim_count and self.root.children[choice].wi/self.root.children[choice].si > 0.6:
+                #choices.remove(choice)
+        if DEBUG:
+            for mv in choices:
+                print("Move:", mv, "UCT:", self.root.children[mv].Node_UCT(DEBUG))
+        #if len(self.root.children) == 0:
+            #all_move = all_moves(self.board, self.my_color)
+            #print("All move debug", all_move)
+        return choices[-1]
 
 
-            self.board.make_move(node.move)
-            result = self.simulation()
-            if result == 1:
-                val = {self.color:1, self.opponent[self.color]:-1}
-            elif result == -1:
-                val = {self.color:-1, self.opponent[self.color]:1}
-            else:
-                val = {self.color:0, self.opponent[self.color]:0}
-            node.update(val)
 
-    def simulation(self):
-        board = copy.deepcopy(self.board)
-        color = self.color
-        win = 0
-        while win == 0:
-            win = board.is_win(self.color)
-            # play the game randomly to the end and record stats
-            next_move = pick_random_move(format_all_move(board.get_all_possible_moves()))
-            board.make_move(next_move, color)
-            color = self.opponent[color]
+    def size_reduce(self):
+        self.sim_count *= self.shrink_factor
+        self.sim_count = int(self.sim_count)
+        self.shrink_factor *= self.shrink_factor
+        if self.sim_count < config.sim_minimum:
+            self.sim_count = config.sim_minimum
+        self.simulation_lim *= config.simulation_scaler
+        if self.simulation_lim > config.simulation_max:
+            self.simulation_lim = config.simulation_max
+        self.p_scal *= config.p_shrink
+        if self.p_scal > config.p_min:
+            self.p_scal = config.p_min
+
+
+    def simulation(self,b, start_player):
+        count = 0
+        moves_to_end = []
+        board = copy.deepcopy(b)
+        win_type = board.is_win(start_player)
+        current_player = start_player
+        while win_type == 0:
+            count += 1
+            if count > config.simulation_max:
+                break
+            all_mv = all_moves(board, current_player)
+            #print(all_mv, current_player)
+            #board.show_board()
+            if len(all_mv) == 0:
+                win_type = board.is_win(current_player)
+                break
+            sim_move = pick_random_move_from(all_mv)
+            #if current_player == self.my_color:
+                #moves_to_end.append(sim_move)
+            board.make_move(sim_move, current_player)
+            win_type = board.is_win(current_player)
+            current_player = opponent[current_player]
         
-        if win == self.color:
-            return 1
-        elif win == 0:
-            return 0
-        return -1
+        if win_type == opponent[start_player]: # I won
+            return -1,moves_to_end
+        elif win_type == start_player: # I lost
+            return 1,moves_to_end
+        else: # Draw
+            return 0,moves_to_end
+        
 
-    def simulate(self,parent, color):
-        # update the tree
-        new_node = Node(color)
-        parent.insert(new_node)
-        return new_node
-                
-    def check_status_win(self, color):
-        if self.board.is_win(color):
-            return True
+
+    def reuse_tree(self, move):
+        for mv in self.root.children:
+            if str(mv) == str(move):
+                move = mv
+        self.root = self.root.children[move]
+        self.root.parent = None
+
+
+
+
+
+
+
+
 
