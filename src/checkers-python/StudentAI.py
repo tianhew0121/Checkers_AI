@@ -104,23 +104,23 @@ class StudentAI():
         #print(mcts != None)
         #if round_counter ==  reset_counter:
             #tree_reset()
-        '''if mcts != None :
+        if mcts != None :
             #print(mcts.root.is_leaf())
             if not mcts.root.is_leaf():
                 #print(self.board.saved_move)
-                mcts.reuse_tree(self.board.saved_move[-1][0])'''
+                mcts.reuse_tree(self.board.saved_move[-1][0])
         ##############################################################
-        '''if mcts == None:
-            mcts = MCTS(self.board, self.color)'''
+        if mcts == None:
+            mcts = MCTS(self.board, self.color)
         t1 = time()
-        mcts = MCTS(self.board, self.color)
+        #mcts = MCTS(self.board, self.color)
         move = mcts.search()
         t2 = time()
         each_total = t2 - t1
         final_total += each_total
         if final_total >= 420:
             sim_count *= sim_scaler
-        '''mcts.reuse_tree(move)'''
+        mcts.reuse_tree(move)
         ##############################################################
         self.board.make_move(move, self.color)
         #tree_reset()
