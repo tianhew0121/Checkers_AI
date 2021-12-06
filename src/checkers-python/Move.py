@@ -56,6 +56,9 @@ class Move:
     def __len__(self):
         return len(self.seq)
 
+    '''def __eq__(self, __o) -> bool:
+        return str(self) == str(__o)'''
+
     def __repr__(self):
         return str(self)
 

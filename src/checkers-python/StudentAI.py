@@ -8,6 +8,26 @@ from math import sqrt, log
 from collections import defaultdict
 #The following part should be completed by students.
 #Students can modify anything except the class name and exisiting functions and varibles.
+from time import time
+##########################Config
+c = 4
+debug = False
+#sim_count = 350 #450 # together with simulation limit, help control system usage no matter what the size of the board is.
+sim_count = 450
+sim_minimum = 1
+sim_scaler = 0.7
+reset_counter = 100000
+p_scaler = 1.0
+p_shrink = 1
+p_min = 1
+simulation_scaler = 1
+simulation_max = 35    #   35
+simulation_limit = 5000   # Not necessaryly the higher this number the better the result. 
+                        #Since we used AMAF H, making this value small might help select the 
+                        # moves that leads to actually winning faster.
+final_total = 0         # Total time so far
+
+
 class Board(Board):
     def is_win(self,turn):
         """
@@ -55,7 +75,7 @@ class Board(Board):
             return 0
 
 
-DEBUG = config.debug
+DEBUG =  debug
 opponent = {2:1, 1:2}
 mcts = None
 round_counter = 0
@@ -74,7 +94,7 @@ class StudentAI():
         
 
     def get_move(self, move):
-        global mcts, round_counter
+        global mcts, round_counter, final_total, sim_count
         #round_counter += 1
         #print('In get move')
         if len(move) != 0:
@@ -82,7 +102,7 @@ class StudentAI():
         else:
             self.color = 1
         #print(mcts != None)
-        #if round_counter == config.reset_counter:
+        #if round_counter ==  reset_counter:
             #tree_reset()
         '''if mcts != None :
             #print(mcts.root.is_leaf())
@@ -92,8 +112,14 @@ class StudentAI():
         ##############################################################
         '''if mcts == None:
             mcts = MCTS(self.board, self.color)'''
+        t1 = time()
         mcts = MCTS(self.board, self.color)
         move = mcts.search()
+        t2 = time()
+        each_total = t2 - t1
+        final_total += each_total
+        if final_total >= 420:
+            sim_count *= sim_scaler
         '''mcts.reuse_tree(move)'''
         ##############################################################
         self.board.make_move(move, self.color)
@@ -148,7 +174,7 @@ class Node(object):
             si = 1
         #p_first = self.p_move_first / sum([c.p_move_first for c in self.parent.children.values()])
         
-        return self.wi + config.c*sqrt(log(sp)/(si)) * (len(self.parent.children))
+        return self.wi + c*sqrt(log(sp)/(si)) * (len(self.parent.children))
 
     def update(self, val) -> None:
         self.si += 1 # visit once and also avoid division zero
@@ -159,9 +185,9 @@ class Node(object):
 
     def update_AMAF(self, val, moves):
         #moves = [str(i) for i in moves]
-        #p_scal = {-1: 2-config.p_scaler, 1: config.p_scaler}
+        #p_scal = {-1: 2- p_scaler, 1:  p_scaler}
         #p_scal = {-1: 1, 1: mcts.p_scal}
-        #p_scal = {-1: 1/config.p_scaler, 1: mcts.p_scal, 0:1}
+        #p_scal = {-1: 1/ p_scaler, 1: mcts.p_scal, 0:1}
         #if val != 0 and self.parent:
         #    for mvs in self.children.keys():
         #        if str(mvs) in moves:
@@ -206,24 +232,17 @@ class Node(object):
     def is_leaf(self):
         return len(self.children) == 0
 
-'''def stupid_filter(board, my_color, current_color):
-    if my_color == current_color:
-        all_move = all_moves(board, current_color)
-        for move in all_move:
-            board.make_move(move, current_color):
-            opponent_color == opponent[current_color]
-            win_type = board.is_win(current_color)
-            if win_type == my_color:'''
+
 
 class MCTS():
     def __init__(self, board, color) -> None:
         self.root = Node(None)
         self.board = board
         self.my_color = color
-        self.p_scal = config.p_scaler
-        self.sim_count = config.sim_count
-        self.shrink_factor = config.sim_scaler
-        self.simulation_lim = config.simulation_limit
+        self.p_scal = p_scaler
+        self.sim_count = sim_count
+        self.shrink_factor = sim_scaler
+        self.simulation_lim = simulation_limit
 
     def reset(self):
         self.root = Node(None)
@@ -267,7 +286,7 @@ class MCTS():
         #self.size_reduce()
         choices = sorted(self.root.children.keys(), key= lambda x: self.root.children[x].si)
         #for choice in choices:
-            #if self.root.children[choice].si > 0.3 * config.sim_count and self.root.children[choice].wi/self.root.children[choice].si > 0.6:
+            #if self.root.children[choice].si > 0.3 *  sim_count and self.root.children[choice].wi/self.root.children[choice].si > 0.6:
                 #choices.remove(choice)
         if DEBUG:
             for mv in choices:
@@ -283,14 +302,14 @@ class MCTS():
         self.sim_count *= self.shrink_factor
         self.sim_count = int(self.sim_count)
         self.shrink_factor *= self.shrink_factor
-        if self.sim_count < config.sim_minimum:
-            self.sim_count = config.sim_minimum
-        self.simulation_lim *= config.simulation_scaler
-        if self.simulation_lim > config.simulation_max:
-            self.simulation_lim = config.simulation_max
-        self.p_scal *= config.p_shrink
-        if self.p_scal > config.p_min:
-            self.p_scal = config.p_min
+        if self.sim_count <  sim_minimum:
+            self.sim_count =  sim_minimum
+        self.simulation_lim *=  simulation_scaler
+        if self.simulation_lim >  simulation_max:
+            self.simulation_lim =  simulation_max
+        self.p_scal *=  p_shrink
+        if self.p_scal >  p_min:
+            self.p_scal =  p_min
 
 
     def simulation(self,b, start_player):
@@ -301,7 +320,7 @@ class MCTS():
         current_player = start_player
         while win_type == 0:
             count += 1
-            if count > config.simulation_max:
+            if count >  simulation_max:
                 break
             all_mv = all_moves(board, current_player)
             #print(all_mv, current_player)
